@@ -368,6 +368,12 @@ int sfs_fwrite(int fileID, const char *buf, int length){
         return 0;
     }
     int bytes_towrite = length;
+
+    int updated_bytes = fd->write_pt + length;
+    if(updated_bytes > MAXFILESIZE){
+        updated_bytes = MAXFILESIZE;
+        bytes_towrite = MAXFILESIZE - fd->write_pt;
+    }
     // retrieve the inode associated to this file
     Inode *f_inode = &inodes[fd->inode_num];
     // figure out how many blocks are being used for this file
@@ -376,11 +382,6 @@ int sfs_fwrite(int fileID, const char *buf, int length){
         current_blocks++;
     }
     // figure out if we need more blocks
-    int updated_bytes = fd->write_pt + length;
-    if(updated_bytes > MAXFILESIZE){
-        updated_bytes = MAXFILESIZE;
-        bytes_towrite = MAXFILESIZE - fd->write_pt;
-    }
 
     int total_blocks_towrite = updated_bytes/BLOCK_SIZE;
     if(updated_bytes%BLOCK_SIZE != 0){
@@ -395,7 +396,6 @@ int sfs_fwrite(int fileID, const char *buf, int length){
 
     if(current_blocks > 12){
         read_blocks(f_inode->indirect, 1, indirect_block_pts);
-        // memcpy(&indirect_block_pts, indir_block, BLOCK_SIZE);
 
     }else if(total_blocks_towrite > 12){
         // if this file didn't have indirect blocks, but by writing we need one, allocate a block for indirect
@@ -406,7 +406,6 @@ int sfs_fwrite(int fileID, const char *buf, int length){
         f_inode->indirect=indir_pt;
     }
     // allocate blocks in the bitmap, then have the pointers in the file's inode point to these datablocks
-
     // see if we need more blocks than we already have
     if(additional_blocks > 0){
         // we need to allocate more blocks to this file
@@ -437,8 +436,7 @@ int sfs_fwrite(int fileID, const char *buf, int length){
     int to_allocate = BLOCK_SIZE * total_blocks_towrite;
     void *file_buffer = malloc(to_allocate);
 
-
-    for(i=start; i<current_blocks; i++){
+    for(i=start; i<current_blocks && i<total_blocks_towrite; i++){
         if(i<12){
             read_blocks(f_inode->block_pointers[i], 1, (file_buffer + (i-start)*BLOCK_SIZE));
         }else{
@@ -460,7 +458,6 @@ int sfs_fwrite(int fileID, const char *buf, int length){
 
     // now just update the metadata on the disk
     // update the size information in the inode
-    // ORIGINAL SIZE == 0
 
     if(f_inode->size < updated_bytes){
         f_inode->size = updated_bytes;
